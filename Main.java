@@ -15,15 +15,15 @@ import javax.swing.JFrame;
 public class Main {
     static JFrame frame;
     static BufferedImage image;
-    static final int imageWidth = 650;
-    static final int imageHeight = 650;
-    static double scale = 10;
-    static final double width = imageWidth / scale;
-    static final double height = imageHeight / scale;
+    static final int imageWidth = 1000;
+    static final int imageHeight = 1000;
+    static double scale = 8;
+    //static final double width = imageWidth / scale;
+    //static final double height = imageHeight / scale;
 
     static Random rand = new Random(new Date().getTime());
     
-    static final int N = 500;
+    static final int N = 5000;
     static double[] xs = new double[N];
     static double[] ys = new double[N];
     static double[] vxs = new double[N];
@@ -35,23 +35,36 @@ public class Main {
     static double[] checkaxs = new double[N];
     static double[] checkays = new double[N];
     
-    static int NcellX = 7;
-    static int NcellY = 7;
-    static double cellWidth = width / NcellX;
-    static double cellHeight = height / NcellY;
-    static int[][][] cellMembers = new int[NcellX][NcellY][1000];
-    static int[][] cellPops = new int[NcellX][NcellY];
+    static int NcellX;
+    static int NcellY;
+    static double cellWidth;
+    static double cellHeight;
+    static int[][][] cellMembers;
+    static int[][] cellPops;
     static int[] cellNeighborOffsetsX = new int[] { 0, 1, 1, 0, -1 };
     static int[] cellNeighborOffsetsY = new int[] { 0, 0, 1, 1, 1 };
 
-    static double pressure = 0.0001;
-    static final double wallDensity = 1.0;
-    static double[] wallCoords = new double[4];
-    static double[] wallvs = new double[4];
-    static double[] wallhalfvs = new double[4];
-    static double[] wallas = new double[4];
+    static double pressure = 0.1;
+    static double wallRadius;
+    static double wallMass = 50;
+    static double wallStiffness = 5;
+    static double wallV;
+    static double wallHalfV;
+    static double wallA;
+    
+    static double targetT = 1.0;
+    static double avgT;
+    
+    static double totalInteratomPE;
+    static double totalAtomKE;
+    static double totalWallPE;
+    static double wallKE;
+    static double pressureE;
+    static double totalE;
     
     static boolean resampleVelocities = false;
+    
+    static double millisPerStep = 1.0;
     
     public static void main(String[] args) throws IOException {
         System.out.println("hello world!");
@@ -66,19 +79,10 @@ public class Main {
             public void keyPressed(KeyEvent e) {}
             public void keyReleased(KeyEvent e) {}
             public void keyTyped(KeyEvent e) {
-                System.out.println("sup bitches");
                 if (e.getKeyChar() == 'h') {
-                    for (int i = 0; i < Main.N; ++i) {
-                        Main.vxs[i] *= 1.1;
-                        Main.vys[i] *= 1.1;
-                    }
-                    System.out.println("hotter");
+                    Main.targetT *= 1.01;
                 } else if (e.getKeyChar() == 'c') {
-                    for (int i = 0; i < Main.N; ++i) {
-                        Main.vxs[i] *= 0.9;
-                        Main.vys[i] *= 0.9;
-                    }               
-                    System.out.println("colder");
+                    Main.targetT *= 0.99;
                 } else if (e.getKeyChar() == 'p') {
                     Main.pressure *= 1.1;
                 } else if (e.getKeyChar() == 'o') {
@@ -105,13 +109,12 @@ public class Main {
          
        
         double r2cutoff = 9;
-        if (Math.sqrt(r2cutoff) >= cellWidth || Math.sqrt(r2cutoff) >= cellHeight) {
-            System.out.println("cells too small");
-            System.exit(-1);
-        }
+        double rcutoff = Math.sqrt(r2cutoff);
         
         System.out.format("NcellX = %d, NcellY = %d, cellWidth = %.2f, cellHeight = %.2f, rcutoff = %.2f\n", 
                 NcellX, NcellY, cellWidth, cellHeight, Math.sqrt(r2cutoff));
+        
+        wallRadius = Math.max(imageWidth, imageHeight) / (2*scale);
         
         for (int i = 0; i < N; ++i) {
             //vxs[i] = 1*(-0.5 + Math.random());
@@ -119,8 +122,8 @@ public class Main {
 
             boolean collision;
             do {
-                xs[i] = /*5 + Math.random()*(width-10);*/ Math.random() * width;
-                ys[i] = /*5 + Math.random()*(height-10);*/ Math.random() * height;
+                xs[i] = 2 * (-0.5 + Math.random()) * wallRadius;
+                ys[i] = 2 * (-0.5 + Math.random()) * wallRadius;
                 collision = false;
                 for (int j = 0; j < i; ++j) {
                     double dx = xs[i] - xs[j];
@@ -137,44 +140,45 @@ public class Main {
             } while(collision);
         }
         sampleVelocitiesFromMaxwellBoltzmann(0.8);
-
-        wallCoords[0] = 0;
-        wallCoords[1] = width;
-        wallCoords[2] = 0;
-        wallCoords[3] = height;
-
+        wallV = 0;
+        
+/*        xs[0] = -1;
+        xs[1] = 1;
+        ys[0] = ys[1] = 0;
+        vxs[0] = vys[0] = vxs[1] = vys[1] = 0;*/
+        
         double dt = 0.005;
         int iter = 0;
         
-        long startTime = System.currentTimeMillis();
         
-        while(true) {            
-            if (iter % 1 == 0) drawAtoms();
-           // System.in.read(); System.in.read();
+        double targetFrameRate = 60;
+        millisPerStep = 1;
+        int stepsSinceFrame = Integer.MAX_VALUE;
+        avgT = computeTemperature();
+        while(true) {     
+            long stepStartTime = System.currentTimeMillis();
+
+            double numSkip = 1000.0 / (millisPerStep * targetFrameRate);
+            if (stepsSinceFrame >= numSkip) {
+                drawAtoms();
+                stepsSinceFrame = 0;
+            } else {
+                stepsSinceFrame += 1;
+            }
             
             // compute half-step velocities
             for (int i = 0; i < N; ++i) {
                 halfvxs[i] = vxs[i] + 0.5 * dt * axs[i];
                 halfvys[i] = vys[i] + 0.5 * dt * ays[i];
-                //System.out.format("halfvs[%d] = (%f,%f)\n", i, halfvxs[i], halfvys[i]);
             }
-            for (int i = 0; i < 4; ++i) {
-                wallhalfvs[i] = wallvs[i] + 0.5 * dt * wallas[i];
-            }
+            wallHalfV = wallV + 0.5 * dt * wallA;
 
             // compute new positions
             for (int i = 0; i < N; ++i) {
                 xs[i] += dt * halfvxs[i];
                 ys[i] += dt * halfvys[i];
-//                if (xs[i] < 0) xs[i] += width;
-//                if (ys[i] < 0) ys[i] += height;
-//                if (xs[i] > width) xs[i] -= width;
-//                if (ys[i] > height) ys[i] -= height;
-                //System.out.format("x[%d] = (%f,%f)\n", i, xs[i], ys[i]);
             }
-            for (int i = 0; i < 4; ++i) {
-                wallCoords[i] += dt * wallhalfvs[i];
-            }
+            wallRadius += dt * wallHalfV;
             
             // compute new accelerations
             for (int i = 0; i < N; ++i) {
@@ -183,41 +187,33 @@ public class Main {
                 checkaxs[i] = 0;
                 checkays[i] = 0;
             }            
-            wallas[0] = pressure / wallDensity;
-            wallas[1] = -pressure / wallDensity;
-            wallas[2] = pressure / wallDensity;
-            wallas[3] = -pressure / wallDensity;
-            //int zeroforcecountcheck = 0;
-            /*for (int i = 0; i < N; ++i) {
-                for (int j = 0; j < i; ++j) {
-                    double dx = xs[i] - xs[j];
-                    double dy = ys[i] - ys[j];
-//                    if (dx > width/2) dx -= width;
-//                    if (dy > height/2) dy -= height;
-//                    if (dx < -width/2) dx += width;
-//                    if (dy < -height/2) dy += height;
-                    double r2 = dx*dx + dy*dy;
-                    if (r2 <= r2cutoff) {
-                        double rm6 = 1/(r2*r2*r2);
-                        double Foverr = 12 * rm6 * (rm6 - 1);
-                        double Fx = Foverr * dx;
-                        double Fy = Foverr * dy;
-                        checkaxs[i] += Fx;
-                        checkays[i] += Fy; 
-                        checkaxs[j] -= Fx;
-                        checkays[j] -= Fy;
-//                        if (i == 0) {
-//                            System.out.format("check: %d <-> %d        ;    (%.4f, %.4f) <-> (%.4f, %.4f)    ; F(0) = (%.4f, %.4f)\n", i, j, xs[i], ys[i], xs[j], ys[j], Fx, Fy);
-//                            zeroforcecountcheck += 1;
-//                        }
-                    }
+            double wallArea = 8*wallRadius;
+            double wallForce = -pressure * wallArea;
+            wallA = wallForce / wallMass;
+            // the force law for the wall radius is d^2 R/dt^2 = -8*R*P/M
+            // This can be rewritten dS/dt = -8*R*P where S = M*Rdot is the wall momentum
+            // The corresponding Hamiltonian is H = S^2/(2M) + 4*R^2*P, that is H = S^2/2M + PV
+            // where V = (2R)^2 is the volume.
+            double volume = 4*wallRadius*wallRadius;
+            pressureE = pressure * volume;
+
+            // decide on cell size
+            if (iter % 10 == 0) {
+                NcellX = (int)Math.max(1, Math.min(15, (2*wallRadius / rcutoff)));
+                NcellY = (int)Math.max(1, Math.min(15, (2*wallRadius / rcutoff)));
+                cellWidth = 2 * wallRadius / NcellX;
+                cellHeight = 2 * wallRadius / NcellY;
+                if (cellWidth <= rcutoff || cellHeight <= rcutoff) {
+                    System.out.println("cells too small");
+                    System.exit(-1);;
+                } else {
+                    //System.out.format("NcellX = %d, NcellY = %d, cells are %.2f x %.2f\n", NcellX, NcellY, cellWidth, cellHeight);
                 }
-                //System.out.format("as[%d] = (%f,%f)\n", i, axs[i], ays[i]);
-            }*/
-            /*for (int i = 0; i < N; ++i) {
-                axs[i] = checkaxs[i];
-                ays[i] = checkays[i];
-            }*/
+                cellMembers = new int[NcellX][NcellY][1000];
+                cellPops = new int[NcellX][NcellY];
+            }            
+
+            
             // put atoms in cells
             for (int cellX = 0; cellX < NcellX; ++cellX) {
                 for(int cellY = 0; cellY < NcellY; ++cellY) {
@@ -225,8 +221,8 @@ public class Main {
                 }
             }
             for (int i = 0; i < N; ++i) {
-                int cellX = (int)(xs[i] / cellWidth);
-                int cellY = (int)(ys[i] / cellHeight);
+                int cellX = (int)((wallRadius + xs[i]) / cellWidth);
+                int cellY = (int)((wallRadius + ys[i]) / cellHeight);
                 if (cellX < 0) cellX = 0;
                 if (cellY < 0) cellY = 0;
                 if (cellX >= NcellX) cellX = NcellX - 1;
@@ -234,6 +230,7 @@ public class Main {
                 cellMembers[cellX][cellY][cellPops[cellX][cellY]++] = i;
             }
             // compute forces between atoms
+            totalInteratomPE = 0;
             for (int cellX = 0; cellX < NcellX; ++cellX) {
                 for (int cellY = 0; cellY < NcellY; ++cellY) {
                     int[] thisCellMembers = cellMembers[cellX][cellY];
@@ -261,8 +258,12 @@ public class Main {
 //                                        System.out.format("cells: %d <-> %d        ;    (%.4f, %.4f) <-> (%.4f, %.4f)\n", i, j, xs[i], ys[i], xs[j], ys[j]);
 //                                        zeroforcecount += 1;
 //                                    }
+                                    // V = 1/r^12 - 2/r^6
+                                    // F = -dV/dr = 12 (1/r^13 - 1/r^7)
+                                    // F/r = 12 * 1/r^2 * (1/r^12 - 1/r^6) = 12 (1/r^2) (1/r^6) (1/r^6 - 1)
                                     double rm6 = 1/(r2*r2*r2);
-                                    double Foverr = 12 * rm6 * (rm6 - 1);
+                                    double Foverr = 12 * rm6 * (rm6 - 1) / r2;
+                                    totalInteratomPE += rm6 * (rm6 - 2);
                                     double Fx = Foverr * dx;
                                     double Fy = Foverr * dy;
                                     axs[i] += Fx;
@@ -275,85 +276,61 @@ public class Main {
                     }                    
                 }
             }
-            double wallStiffness = 5;
-            //double buffer = 2;
+            // wall forces
+            totalWallPE = 0;
             for (int i = 0; i < N; ++i) {
-                //if (xs[i] < buffer) axs[i] += wallStiffness * (buffer - xs[i]);
-                //if (ys[i] < buffer) ays[i] += wallStiffness * (buffer - ys[i]);
-                //if (xs[i] > width-buffer) axs[i] -= wallStiffness * (xs[i] - width + buffer);
-                //if (ys[i] > height-buffer) ays[i] -= wallStiffness * (ys[i] - height + buffer);
-                if (xs[i] < wallCoords[0]) {
-                    double F = wallStiffness * (wallCoords[0] - xs[i]);
+                if (xs[i] < -wallRadius) {
+                    double d = (xs[i] + wallRadius);
+                    double F = -wallStiffness * d;
                     axs[i] += F;
-                    wallas[0] -= F / (wallDensity * height);
+                    wallA += F / wallMass;
+                    totalWallPE += 0.5 * wallStiffness * d * d;
                 }
-                if (xs[i] > wallCoords[1]) {
-                    double F = wallStiffness * (xs[i] - wallCoords[1]);
+                if (xs[i] > wallRadius) {
+                    double d = (xs[i] - wallRadius);
+                    double F = wallStiffness * d;
                     axs[i] -= F;
-                    wallas[1] += F / (wallDensity * height);
+                    wallA += F / wallMass;
+                    totalWallPE += 0.5 * wallStiffness * d * d;
                 }
-                if (ys[i] < wallCoords[2]) {
-                    double F = wallStiffness * (wallCoords[2] - ys[i]);
+                if (ys[i] < -wallRadius) {
+                    double d = (ys[i] + wallRadius);
+                    double F = -wallStiffness * d;
                     ays[i] += F;
-                    wallas[2] -= F / (wallDensity * width);
+                    wallA += F / wallMass;
+                    totalWallPE += 0.5 * wallStiffness * d * d;
                 }
-                if (ys[i] > wallCoords[3]) {
-                    double F = wallStiffness * (ys[i] - wallCoords[3]);
+                if (ys[i] > wallRadius) {
+                    double d = (ys[i] - wallRadius);
+                    double F = wallStiffness * d;
                     ays[i] -= F;
-                    wallas[3] += F / (wallDensity * width);
+                    wallA += F / wallMass;
+                    totalWallPE += 0.5 * wallStiffness * d * d;
                 }
             }
-//            System.out.println("zeroforcecount = " + zeroforcecount);
-            /*for (int i = 0; i < N; ++i) {
-                if (Math.abs(axs[i] - checkaxs[i]) > 1e-8) {
-                    System.out.println("error in axs[" + i + "]; ax = " + axs[i] + ", checkax = " + checkaxs[i]);
-                    System.exit(-1);
-                }
-                if (Math.abs(ays[i] - checkays[i]) > 1e-8) {
-                    System.out.println("error in ays[" + i + "]");
-                    System.exit(-1);
-                }
-            }*/
             
             // compute new velocities
+            totalAtomKE = 0;
             for (int i = 0; i < N; ++i) {
                 vxs[i] = halfvxs[i] + 0.5 * dt * axs[i];
                 vys[i] = halfvys[i] + 0.5 * dt * ays[i];
-                //System.out.format("vs[%d] = (%f,%f)\n", i, vxs[i], vys[i]);
+                totalAtomKE += 0.5 * (vxs[i] * vxs[i] + vys[i] * vys[i]);
             }
-            for (int i = 0; i < 4; ++i) {
-                wallvs[i] = wallhalfvs[i] + 0.5 * dt * wallas[i];
-            }
-            if (resampleVelocities) {
-                sampleVelocitiesFromMaxwellBoltzmann(1.0);
+            wallV = wallHalfV + 0.5 * dt * wallA;
+            if (resampleVelocities || iter % 2000 == 0) {
+                sampleVelocitiesFromMaxwellBoltzmann(targetT);
                 resampleVelocities = false;
             }
+            wallKE = 0.5 * wallMass * wallV * wallV;
             
-            double comX = 0;
-            double comY = 0;
-            for (int i = 0; i < N; ++i) {
-                comX += xs[i];
-                comY += ys[i];
-            }
-            comX /= N;
-            comY /= N;
-            double shiftX = width*(10/scale)/2 - comX;
-            double shiftY = height*(10/scale)/2 - comY;
-            for (int i = 0; i < N; ++i) {
-                xs[i] += shiftX;
-                ys[i] += shiftY;
-            }
-            wallCoords[0] += shiftX;
-            wallCoords[1] += shiftX;
-            wallCoords[2] += shiftY;
-            wallCoords[3] += shiftY;
+            totalE = totalAtomKE + totalInteratomPE + totalWallPE + wallKE + pressureE;
             
             iter += 1;
-            //if (iter % 10000 == 0) {
-            //    sampleVelocitiesFromMaxwellBoltzmann(0.8);
-            //}
             
-            if (iter % 100 == 0) System.out.format("steps/sec = %.2f\n", (1000.0 * iter) / (System.currentTimeMillis() - startTime));
+            avgT = 0.999 * avgT + 0.001 * computeTemperature();
+            
+            long stepMillis = System.currentTimeMillis() - stepStartTime;
+            millisPerStep = 0.9999 * millisPerStep + 0.0001 * stepMillis;
         }
     }
     
@@ -386,18 +363,22 @@ public class Main {
             }
             g.setColor(new Color((float)red, (float)green, (float)blue));
             
-            g.fillOval((int)(scale * xs[i]-0.5*diameter), (int)(scale * ys[i]-0.5*diameter), diameter, diameter);
+            g.fillOval(imageWidth/2 + (int)(scale * xs[i]-0.5*diameter), imageHeight/2 + (int)(scale * ys[i]-0.5*diameter), diameter, diameter);
         }
         
         g.setColor(Color.white);
-        g.drawLine((int)(scale * wallCoords[0]), 0, (int)(scale * wallCoords[0]), imageHeight);
-        g.drawLine((int)(scale * wallCoords[1]), 0, (int)(scale * wallCoords[1]), imageHeight);
-        g.drawLine(0, (int)(scale * wallCoords[2]), imageWidth, (int)(scale * wallCoords[2]));
-        g.drawLine(0, (int)(scale * wallCoords[3]), imageWidth, (int)(scale * wallCoords[3]));
+        g.drawRect(imageWidth/2 - (int)(scale * wallRadius), imageHeight/2 - (int)(scale * wallRadius), (int)(2*scale*wallRadius), (int)(2*scale*wallRadius));
         
         g.setColor(Color.white);
-        g.drawString(String.format("temp = %.4f", computeTemperature()), 10, 10);
+        g.drawString(String.format("targetT = %.4f, temp = %.4f", targetT, avgT), 10, 10);
         g.drawString(String.format("pressure = %.8f", pressure), 10, 30);
+        g.drawString(String.format("step = %.2f ms", millisPerStep), 10, 50);
+        g.drawString(String.format("totalE = %.2f", totalE), 10, 70);
+        g.drawString(String.format("totalAtomKE = %.2f", totalAtomKE), 10, 90);
+        g.drawString(String.format("totalInteratomPE = %.2f", totalInteratomPE), 10, 110);
+        g.drawString(String.format("totalWallPE = %.2f", totalWallPE), 10, 130);
+        g.drawString(String.format("wallKE = %.2f", wallKE), 10, 150);
+        g.drawString(String.format("pressureE = %.2f", pressureE), 10, 170);
         
         frame.getGraphics().drawImage(image, 9, 32, frame);
     }
