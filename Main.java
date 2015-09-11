@@ -10,6 +10,7 @@ import java.util.Date;
 import java.util.Random;
 
 import javax.swing.JFrame;
+import javax.swing.WindowConstants;
 
 
 public class Main {
@@ -74,6 +75,7 @@ public class Main {
         frame = new JFrame("moldyn");
         frame.setSize(imageWidth + 50, imageHeight + 50);
         frame.setVisible(true);
+        frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         
         frame.addKeyListener(new KeyListener () {
             public void keyPressed(KeyEvent e) {}
