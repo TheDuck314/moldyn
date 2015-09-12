@@ -204,6 +204,7 @@ public class Main {
             // decide on cell size
             if (iter % 10 == 0) {
                 NcellX = Math.min((int)(2*wallRadius / rcutoff)-1, (int)Math.sqrt(N));
+                if (NcellX < 1) NcellX = 1;
                 NcellY = NcellX;
                 cellWidth = 2 * wallRadius / NcellX;
                 cellHeight = 2 * wallRadius / NcellY;
@@ -240,8 +241,9 @@ public class Main {
                     int[] thisCellMembers = cellMembers[cellX][cellY];
                     int thisCellPop = cellPops[cellX][cellY];
                     for (int off = 0; off < 5; ++off) {
-                        int neighborCellX = (cellX + cellNeighborOffsetsX[off] + NcellX) % NcellX;
-                        int neighborCellY = (cellY + cellNeighborOffsetsY[off] + NcellY) % NcellY;
+                        int neighborCellX = cellX + cellNeighborOffsetsX[off];
+                        int neighborCellY = cellY + cellNeighborOffsetsY[off];
+                        if (neighborCellX < 0 || neighborCellY < 0 || neighborCellX >= NcellX || neighborCellY >= NcellY) continue;
                         int[] neighborCellMembers = cellMembers[neighborCellX][neighborCellY];
                         int neighborCellPop = cellPops[neighborCellX][neighborCellY];
                         for (int thisAtom = 0; thisAtom < thisCellPop; ++thisAtom) {
