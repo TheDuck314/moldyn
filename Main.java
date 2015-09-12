@@ -16,9 +16,9 @@ import javax.swing.WindowConstants;
 public class Main {
     static JFrame frame;
     static BufferedImage image;
-    static final int imageWidth = 1000;
-    static final int imageHeight = 1000;
-    static double scale = 8;
+    static final int imageWidth = 600;
+    static final int imageHeight = 600;
+    static double scale = 5;
     //static final double width = imageWidth / scale;
     //static final double height = imageHeight / scale;
 
@@ -45,15 +45,15 @@ public class Main {
     static int[] cellNeighborOffsetsX = new int[] { 0, 1, 1, 0, -1 };
     static int[] cellNeighborOffsetsY = new int[] { 0, 0, 1, 1, 1 };
 
-    static double pressure = 0.1;
+    static double pressure = 0.06;
     static double wallRadius;
-    static double wallMass = 50;
+    static double wallMass = 1;
     static double wallStiffness = 5;
     static double wallV;
     static double wallHalfV;
     static double wallA;
     
-    static double targetT = 1.0;
+    static double targetT = 0.47;
     static double avgT;
     
     static double totalInteratomPE;
@@ -66,6 +66,8 @@ public class Main {
     static boolean resampleVelocities = false;
     
     static double millisPerStep = 1.0;
+    
+    static double simTime = 0;
     
     public static void main(String[] args) throws IOException {
         System.out.println("hello world!");
@@ -201,8 +203,8 @@ public class Main {
 
             // decide on cell size
             if (iter % 10 == 0) {
-                NcellX = (int)Math.max(1, Math.min(15, (2*wallRadius / rcutoff)));
-                NcellY = (int)Math.max(1, Math.min(15, (2*wallRadius / rcutoff)));
+                NcellX = Math.min((int)(2*wallRadius / rcutoff)-1, (int)Math.sqrt(N));
+                NcellY = NcellX;
                 cellWidth = 2 * wallRadius / NcellX;
                 cellHeight = 2 * wallRadius / NcellY;
                 if (cellWidth <= rcutoff || cellHeight <= rcutoff) {
@@ -263,8 +265,9 @@ public class Main {
                                     // V = 1/r^12 - 2/r^6
                                     // F = -dV/dr = 12 (1/r^13 - 1/r^7)
                                     // F/r = 12 * 1/r^2 * (1/r^12 - 1/r^6) = 12 (1/r^2) (1/r^6) (1/r^6 - 1)
-                                    double rm6 = 1/(r2*r2*r2);
-                                    double Foverr = 12 * rm6 * (rm6 - 1) / r2;
+                                    double rm2 = 1/r2;
+                                    double rm6 = rm2*rm2*rm2;
+                                    double Foverr = 12 * rm6 * (rm6 - 1) * rm2;
                                     totalInteratomPE += rm6 * (rm6 - 2);
                                     double Fx = Foverr * dx;
                                     double Fy = Foverr * dy;
@@ -328,6 +331,7 @@ public class Main {
             totalE = totalAtomKE + totalInteratomPE + totalWallPE + wallKE + pressureE;
             
             iter += 1;
+            simTime += dt;
             
             avgT = 0.999 * avgT + 0.001 * computeTemperature();
             
@@ -381,6 +385,7 @@ public class Main {
         g.drawString(String.format("totalWallPE = %.2f", totalWallPE), 10, 130);
         g.drawString(String.format("wallKE = %.2f", wallKE), 10, 150);
         g.drawString(String.format("pressureE = %.2f", pressureE), 10, 170);
+        g.drawString(String.format("time = %.2f", simTime), 10, 190);
         
         frame.getGraphics().drawImage(image, 9, 32, frame);
     }
