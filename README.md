@@ -29,7 +29,7 @@ General discussion of phase transitions. Sublimation. Triple point. Critical poi
 
 # How to find a phase transition
 Discontinuities in energy and volume. Latent heat.
-Heat capacity. Thermodynamic limit. Suddenness of transition, with pictures.
+Heat capacity. Thermodynamic limit. Suddenness of transition, with pictures. Hysteresis, supercooling/superheating.
 Why Lvaporization > Lfusion.
 
 # The triple point
