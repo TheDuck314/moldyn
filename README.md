@@ -41,10 +41,10 @@ Latent heat goes to zero. Supercritical fluid. No liquid-gas transition above Pc
 only transition is melting.
 
 # More things
-Compressibility. Thermal expansion coefficient. Speed of sound. 
+Compressibility. Thermal expansion coefficient. Speed of sound. Equation of state. Approach to ideal gas.
 
 # Technical details
-Implementing constant-pressure. Implementing constant-volume. Interatomic potential. 
+Implementing constant-pressure. Implementing constant-temperature. Interatomic potential. 
 
 ANIMATED GIFS
 show solid, liquid, gas, evaporation, freezing, sublimation
