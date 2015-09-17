@@ -4,7 +4,7 @@ import java.util.Date;
 import java.util.Random;
 
 
-public class MonatomicLennardJonesSim implements Sim {
+public class DiatomicLennardJonesSim implements Sim {
     static Random rand = new Random(new Date().getTime());
     
     int N;
@@ -30,6 +30,8 @@ public class MonatomicLennardJonesSim implements Sim {
     double wallHalfV;
     double wallA;
     
+    double bondSpringConstant = 10;
+    
     double targetT = 0.10;
     double avgT;
     
@@ -48,8 +50,13 @@ public class MonatomicLennardJonesSim implements Sim {
     
     boolean resampleVelocities = false;
     
-    public MonatomicLennardJonesSim(int N, double T, double P) {
+    public DiatomicLennardJonesSim(int N, double T, double P) {
         this.N = N;
+        
+        if (N % 2 != 0) {
+            System.out.println("N must be even\n");
+            System.exit(-1);
+        }
         
         xs = new double[N];
         ys = new double[N];
@@ -90,6 +97,7 @@ public class MonatomicLennardJonesSim implements Sim {
         }*/
         
         int rowLen = (int)Math.ceil(Math.sqrt(Math.sqrt(3)*N/2));
+        if (rowLen % 2 != 0) rowLen -= 1;
         double xSpacing = 1.0;
         double ySpacing = xSpacing * Math.sqrt(3)/2;
         double cornerOffset = 0.5 * xSpacing * rowLen;
@@ -210,10 +218,11 @@ public class MonatomicLennardJonesSim implements Sim {
                                 // V = 1/r^12 - 2/r^6
                                 // F = -dV/dr = 12 (1/r^13 - 1/r^7)
                                 // F/r = 12 * 1/r^2 * (1/r^12 - 1/r^6) = 12 (1/r^2) (1/r^6) (1/r^6 - 1)
+                                int forceSign = ((i % 2) ^ (j % 2)) * 2 - 1;
                                 double rm2 = 1/r2;
                                 double rm6 = rm2*rm2*rm2;
-                                double Foverr = 12 * rm6 * (rm6 - 1) * rm2;
-                                totalInteratomPE += rm6 * (rm6 - 2);
+                                double Foverr = 12 * rm6 * (rm6 - 1 * forceSign) * rm2;
+                                totalInteratomPE += rm6 * (rm6 - 2 * forceSign);
                                 double Fx = Foverr * dx;
                                 double Fy = Foverr * dy;
                                 axs[i] += Fx;
@@ -224,6 +233,25 @@ public class MonatomicLennardJonesSim implements Sim {
                         }
                     }
                 }                    
+            }
+        }
+        // bond forces
+        for (int i = 0; i < N; i += 2) {
+            int j = i + 1;
+            double dx = xs[i] - xs[j];
+            double dy = ys[i] - ys[j];
+            double r2 = dx * dx + dy * dy;
+            if (r2 > 1) {
+                double r = Math.sqrt(r2);
+                // F = -k(r - 1);
+                double FoverR = -bondSpringConstant * (r - 1) / r;
+                totalInteratomPE += 0.5 * bondSpringConstant * (r - 1) * (r - 1);
+                double Fx = FoverR * dx;
+                double Fy = FoverR * dy;
+                axs[i] += Fx;
+                ays[i] += Fy;
+                axs[j] -= Fx;
+                ays[j] -= Fy;
             }
         }
         // wall forces
@@ -341,9 +369,20 @@ public class MonatomicLennardJonesSim implements Sim {
             
             g.fillOval(width/2 + (int)(scale * xs[i]-0.5*diameter), height/2 + (int)(scale * ys[i]-0.5*diameter), (int)diameter, (int)diameter);
         }
+        g.setColor(Color.white);
+        for (int i = 0; i < N; i += 2) {
+            g.drawLine(width/2 + (int)(scale * xs[i]), height/2 + (int)(scale * ys[i]),
+                    width/2 + (int)(scale * xs[i+1]), height/2 + (int)(scale * ys[i+1]));
+        }
+        for (int i = 0; i < N; ++i) {
+            g.setColor(i % 2 == 0 ? Color.white : Color.black);
+            g.fillOval(width/2 + (int)(scale * xs[i]-0.25*diameter), height/2 + (int)(scale * ys[i]-0.25*diameter), (int)(0.5*diameter), (int)(0.5*diameter));
+        }
         
         g.setColor(Color.white);
         g.drawRect(width/2 - (int)(scale * wallRadius), height/2 - (int)(scale * wallRadius), (int)(2*scale*wallRadius), (int)(2*scale*wallRadius));
+        
+        
         
         g.setColor(Color.white);
         int textY = -7;

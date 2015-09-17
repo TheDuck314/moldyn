@@ -4,7 +4,7 @@ import java.util.Date;
 import java.util.Random;
 
 
-public class MonatomicLennardJonesSim implements Sim {
+public class QuadrupoleSim implements Sim {
     static Random rand = new Random(new Date().getTime());
     
     int N;
@@ -16,7 +16,17 @@ public class MonatomicLennardJonesSim implements Sim {
     double[] halfvys;
     double[] axs;
     double[] ays;    
+    
+    double[] thetas;
+    double[] omegas;
+    double[] halfomegas;
+    double[] torques;
+    double momentOfInertia = 0.5;
 
+    static final double quadrupoleRadius = 0.04;
+    static final double quadrupoleStrength = 50.0;
+    static final double isotropicAttractiveStrength = 0.5;
+    
     int[][][] cellMembers;
     int[][] cellPops;
     int[] cellNeighborOffsetsX = new int[] { 0, 1, 1, 0, -1 };
@@ -35,6 +45,7 @@ public class MonatomicLennardJonesSim implements Sim {
     
     double totalInteratomPE;
     double totalAtomKE;
+    double totalRotationalKE;
     double totalWallPE;
     double wallKE;
     double pressureE;
@@ -48,7 +59,7 @@ public class MonatomicLennardJonesSim implements Sim {
     
     boolean resampleVelocities = false;
     
-    public MonatomicLennardJonesSim(int N, double T, double P) {
+    public QuadrupoleSim(int N, double T, double P) {
         this.N = N;
         
         xs = new double[N];
@@ -60,10 +71,16 @@ public class MonatomicLennardJonesSim implements Sim {
         axs = new double[N];
         ays = new double[N];
         
+        thetas = new double[N];
+        omegas = new double[N];
+        halfomegas = new double[N];
+        torques = new double[N];
+
+        
         pressure = P;
         targetT = T;
         
-        /*wallRadius = 10 + Math.sqrt(N);
+        wallRadius = 10 + Math.sqrt(N);
         
         for (int i = 0; i < N; ++i) {
             //vxs[i] = 1*(-0.5 + Math.random());
@@ -85,10 +102,13 @@ public class MonatomicLennardJonesSim implements Sim {
                         collision = true;
                         break;
                     }
-                }            
+                }           
+                thetas[i] = 2 * Math.PI * Math.random();
+                omegas[i] = 0;
             } while(collision);
-        }*/
+        }
         
+        /*
         int rowLen = (int)Math.ceil(Math.sqrt(Math.sqrt(3)*N/2));
         double xSpacing = 1.0;
         double ySpacing = xSpacing * Math.sqrt(3)/2;
@@ -106,16 +126,32 @@ public class MonatomicLennardJonesSim implements Sim {
             }
         }        
         wallRadius = cornerOffset + xSpacing;
+        */
         
         wallV = 0;
         sampleVelocitiesFromMaxwellBoltzmann(targetT);
+        
+        
+        /*xs[0] = -1.0;
+        ys[0] = 0.0;
+        xs[1] = +1.0;
+        ys[1] = 0.0;
+        vxs[0] = 0;
+        vys[0] = 0;
+        vxs[1] = 0;
+        vys[1] = 0;
+        thetas[0] = 0;
+        thetas[1] = Math.PI/3;
+        omegas[0] = 0;
+        omegas[1] = 0;*/
+        
         avgT = computeTemperature();
         
         int maxNcell = (int)Math.sqrt(N);
         cellMembers = new int[maxNcell][maxNcell][1000];
         cellPops = new int[maxNcell][maxNcell];
     }
-    
+
     public void SetT(double T) {
         targetT = T;
     }
@@ -132,6 +168,7 @@ public class MonatomicLennardJonesSim implements Sim {
         for (int i = 0; i < N; ++i) {
             halfvxs[i] = vxs[i] + 0.5 * dt * axs[i];
             halfvys[i] = vys[i] + 0.5 * dt * ays[i];
+            halfomegas[i] = omegas[i] + 0.5 * dt * torques[i] / momentOfInertia;
         }
         wallHalfV = wallV + 0.5 * dt * wallA;
     }
@@ -141,15 +178,47 @@ public class MonatomicLennardJonesSim implements Sim {
         for (int i = 0; i < N; ++i) {
             xs[i] += dt * halfvxs[i];
             ys[i] += dt * halfvys[i];
+            thetas[i] += dt * halfomegas[i];
+            if (thetas[i] < 0) thetas[i] += 2 * Math.PI;
+            if (thetas[i] > 2 * Math.PI) thetas[i] -= 2 * Math.PI;
         }
         wallRadius += dt * wallHalfV;
     }
-
+    
+    void DoChargePair(int i, int j, int iSign, double iTheta, int jSign, double jTheta) {        
+        double iChargeX = xs[i] + quadrupoleRadius * Math.cos(iTheta);
+        double iChargeY = ys[i] + quadrupoleRadius * Math.sin(iTheta);
+        double jChargeX = xs[j] + quadrupoleRadius * Math.cos(jTheta);
+        double jChargeY = ys[j] + quadrupoleRadius * Math.sin(jTheta);
+        
+        double dx = iChargeX - jChargeX;
+        double dy = iChargeY - jChargeY;
+        double r2 = dx * dx + dy * dy;
+        double rm2 = 1 / r2;
+        double rm6 = rm2 * rm2 * rm2;
+        double FoverR = 12 * quadrupoleStrength * iSign * jSign * rm6 * rm2;
+        totalInteratomPE += 2 * quadrupoleStrength * iSign * jSign * rm6;
+        double Fx = FoverR * dx;
+        double Fy = FoverR * dy;
+        
+        axs[i] += Fx;
+        ays[i] += Fy;
+        axs[j] -= Fx;
+        ays[j] -= Fy;
+        
+        // Torque = F cross r
+        torques[i] += -(Fx * (iChargeY - ys[i]) - Fy * (iChargeX - xs[i]));
+        torques[j] +=  (Fx * (jChargeY - ys[j]) - Fy * (jChargeX - xs[j]));
+        
+        //System.out.format("%d<->%d  (%d,%d) force, r=%f, F=%f\n", i, j, iSign, jSign, Math.sqrt(r2), FoverR*Math.sqrt(r2));
+    }
+    
     public void ComputeAcclerations(double dt) {
         // compute new accelerations
         for (int i = 0; i < N; ++i) {
             axs[i] = 0;
             ays[i] = 0;
+            torques[i] = 0;
         }            
         double wallArea = 8*wallRadius;
         double wallForce = -pressure * wallArea;
@@ -210,7 +279,7 @@ public class MonatomicLennardJonesSim implements Sim {
                                 // V = 1/r^12 - 2/r^6
                                 // F = -dV/dr = 12 (1/r^13 - 1/r^7)
                                 // F/r = 12 * 1/r^2 * (1/r^12 - 1/r^6) = 12 (1/r^2) (1/r^6) (1/r^6 - 1)
-                                double rm2 = 1/r2;
+                                /*double rm2 = 1/r2;
                                 double rm6 = rm2*rm2*rm2;
                                 double Foverr = 12 * rm6 * (rm6 - 1) * rm2;
                                 totalInteratomPE += rm6 * (rm6 - 2);
@@ -219,7 +288,31 @@ public class MonatomicLennardJonesSim implements Sim {
                                 axs[i] += Fx;
                                 ays[i] += Fy; 
                                 axs[j] -= Fx;
-                                ays[j] -= Fy;
+                                ays[j] -= Fy;*/
+                                
+                                // repulsive core
+                                double rm2 = 1/r2;
+                                double rm6 = rm2*rm2*rm2;
+                                double repulsiveFoverR = 12 * rm6 * (rm6 - isotropicAttractiveStrength) * rm2;
+                                //System.out.format("%d<->%d  repulsive force, r=%f, F=%f\n", i, j, Math.sqrt(r2), repulsiveFoverR*Math.sqrt(r2));
+                                totalInteratomPE += rm6 * (rm6 - 2*isotropicAttractiveStrength);
+                                double repulsiveFx = repulsiveFoverR * dx;
+                                double repulsiveFy = repulsiveFoverR * dy;
+                                axs[i] += repulsiveFx;
+                                ays[i] += repulsiveFy; 
+                                axs[j] -= repulsiveFx;
+                                ays[j] -= repulsiveFy;
+                                
+                                // dipole-dipole force
+                                for (int poleI = 0; poleI < 4; ++poleI) {
+                                    double thetaI = thetas[i] + poleI * Math.PI / 2;
+                                    int signI = (poleI % 2 == 0 ? +1 : -1);
+                                    for(int poleJ = 0; poleJ < 4; ++poleJ) {
+                                        double thetaJ = thetas[j] + poleJ * Math.PI / 2;
+                                        int signJ = (poleJ % 2 == 0 ? +1 : -1);
+                                        DoChargePair(i, j, signI, thetaI, signJ, thetaJ);
+                                    }
+                                }
                             }
                         }
                     }
@@ -258,15 +351,21 @@ public class MonatomicLennardJonesSim implements Sim {
                 totalWallPE += 0.5 * wallStiffness * d * d;
             }
         }
+        //for (int i = 0; i < N; ++i) {
+        //    System.out.format("acc[%d] = (%f,%f)\n", i, axs[i], ays[i]);
+        //}
     }
-
+    
     public void ComputeNewVelocities(double dt) {        
         // compute new velocities
         totalAtomKE = 0;
+        totalRotationalKE = 0;
         for (int i = 0; i < N; ++i) {
             vxs[i] = halfvxs[i] + 0.5 * dt * axs[i];
             vys[i] = halfvys[i] + 0.5 * dt * ays[i];
             totalAtomKE += 0.5 * (vxs[i] * vxs[i] + vys[i] * vys[i]);
+            omegas[i] = halfomegas[i] + 0.5 * dt * torques[i] / momentOfInertia;
+            totalRotationalKE += 0.5 * momentOfInertia * omegas[i] * omegas[i];
         }
         wallV = wallHalfV + 0.5 * dt * wallA;
         if (iter % 1000 == 0 || resampleVelocities) {
@@ -281,17 +380,20 @@ public class MonatomicLennardJonesSim implements Sim {
         simTime += dt;        
         avgT = 0.999 * avgT + 0.001 * computeTemperature();
         
-        totalE = totalAtomKE + totalInteratomPE + totalWallPE + wallKE + pressureE;
+        totalE = totalAtomKE + totalRotationalKE + totalInteratomPE + totalWallPE + wallKE + pressureE;
     }
     
+
     // Maxwell-Boltzmann distribution for each velocity component is gaussian with mean 0
     // and 
     void sampleVelocitiesFromMaxwellBoltzmann(double T)
     {
         double std = Math.sqrt(T);
+        double stdOmega = Math.sqrt(T/momentOfInertia);
         for (int i = 0; i < vxs.length; ++i) {
             vxs[i] = std * rand.nextGaussian();
             vys[i] = std * rand.nextGaussian();
+            omegas[i] = stdOmega * rand.nextGaussian();
         }
         //double wallStd = Math.sqrt(T / wallMass);
         //wallV = wallStd * rand.nextGaussian();
@@ -309,7 +411,6 @@ public class MonatomicLennardJonesSim implements Sim {
         meanVy2 /= N;
         return (meanVx2 + meanVy2)/2;
     }
-    
     
     public void Draw(Graphics g, int width, int height, double scale)
     {
@@ -337,9 +438,15 @@ public class MonatomicLennardJonesSim implements Sim {
                 red = 1;
                 green = 1;
             }
-            g.setColor(new Color((float)red, (float)green, (float)blue));
-            
+            g.setColor(new Color((float)red, (float)green, (float)blue));            
             g.fillOval(width/2 + (int)(scale * xs[i]-0.5*diameter), height/2 + (int)(scale * ys[i]-0.5*diameter), (int)diameter, (int)diameter);
+            g.setColor(Color.white);
+            g.drawLine(width/2 + (int)(scale * xs[i] - 0.5 * diameter * Math.cos(thetas[i])), height/2 + (int)(scale * ys[i] - 0.5 * diameter * Math.sin(thetas[i])),
+                    width/2 + (int)(scale * xs[i] + 0.5 * diameter * Math.cos(thetas[i])), height/2 + (int)(scale * ys[i] + 0.5 * diameter * Math.sin(thetas[i])));
+            g.setColor(Color.black);
+            g.drawLine(width/2 + (int)(scale * xs[i] - 0.5 * diameter * Math.cos(thetas[i]+Math.PI/2)), height/2 + (int)(scale * ys[i] - 0.5 * diameter * Math.sin(thetas[i]+Math.PI/2)),
+                    width/2 + (int)(scale * xs[i] + 0.5 * diameter * Math.cos(thetas[i]+Math.PI/2)), height/2 + (int)(scale * ys[i] + 0.5 * diameter * Math.sin(thetas[i]+Math.PI/2)));
+                    
         }
         
         g.setColor(Color.white);
@@ -351,6 +458,7 @@ public class MonatomicLennardJonesSim implements Sim {
         g.drawString(String.format("pressure = %.8f", pressure), 10, textY += 17);
         g.drawString(String.format("totalE = %.2f", totalE), 10, textY += 17);
         g.drawString(String.format("totalAtomKE = %.2f", totalAtomKE), 10, textY += 17);
+        g.drawString(String.format("totalRotationalKE = %.2f", totalRotationalKE), 10, textY += 17);
         g.drawString(String.format("totalInteratomPE = %.2f", totalInteratomPE), 10, textY += 17);
         g.drawString(String.format("totalWallPE = %.2f", totalWallPE), 10, textY += 17);
         g.drawString(String.format("wallKE = %.2f", wallKE), 10, textY += 17);
@@ -358,5 +466,4 @@ public class MonatomicLennardJonesSim implements Sim {
         g.drawString(String.format("time = %.2f", simTime), 10, textY += 17);
         g.drawString(String.format("volume = %.2f", 4*wallRadius*wallRadius), 10, textY += 17);
     }
-    
 }

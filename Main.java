@@ -18,13 +18,16 @@ public class Main {
     static BufferedImage image;
 
     static double scale = 10;
-    static int N = 5000;
-    static double T = 0.45;
-    static double P = 0.03;
+    static int N = 1000;
+    static double T = 0.41;
+    static double P = 1;
 
     public static void main(String[] args) throws IOException {
         
-        final Sim sim = new MonatomicLennardJonesSim(N, T, P);
+        //final Sim sim = new MonatomicLennardJonesSim(N, T, P);
+        //final Sim sim = new DipoleSim(N, T, P);
+        //final Sim sim = new QuadrupoleSim(N, T, P);
+        final Sim sim = new DiatomicLennardJonesSim(N, T, P);
         
         frame = new JFrame("moldyn");
         frame.setSize(600, 600);
@@ -57,7 +60,7 @@ public class Main {
             }
         });
         
-        double dt = 0.02; //0.005;
+        double dt = 0.01; //0.02; //0.005;
         
         double targetFrameRate = 30;
         double millisPerStep = 1;
@@ -66,7 +69,7 @@ public class Main {
             long stepStartTime = System.currentTimeMillis();
 
             double numSkip = 1000.0 / (millisPerStep * targetFrameRate);
-            if (stepsSinceFrame >= numSkip) {
+            if (/*true ||*/ stepsSinceFrame >= numSkip) {
                 Draw(sim);
                 stepsSinceFrame = 0;
             } else {
