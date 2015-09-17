@@ -236,7 +236,7 @@ public class DiatomicLennardJonesSim implements Sim {
             }
         }
         // bond forces
-        for (int i = 0; i < N; i += 2) {
+        /*for (int i = 0; i < N; i += 2) {
             int j = i + 1;
             double dx = xs[i] - xs[j];
             double dy = ys[i] - ys[j];
@@ -253,7 +253,7 @@ public class DiatomicLennardJonesSim implements Sim {
                 axs[j] -= Fx;
                 ays[j] -= Fy;
             }
-        }
+        }*/
         // wall forces
         totalWallPE = 0;
         for (int i = 0; i < N; ++i) {
@@ -369,11 +369,11 @@ public class DiatomicLennardJonesSim implements Sim {
             
             g.fillOval(width/2 + (int)(scale * xs[i]-0.5*diameter), height/2 + (int)(scale * ys[i]-0.5*diameter), (int)diameter, (int)diameter);
         }
-        g.setColor(Color.white);
+        /*g.setColor(Color.white);
         for (int i = 0; i < N; i += 2) {
             g.drawLine(width/2 + (int)(scale * xs[i]), height/2 + (int)(scale * ys[i]),
                     width/2 + (int)(scale * xs[i+1]), height/2 + (int)(scale * ys[i+1]));
-        }
+        }*/
         for (int i = 0; i < N; ++i) {
             g.setColor(i % 2 == 0 ? Color.white : Color.black);
             g.fillOval(width/2 + (int)(scale * xs[i]-0.25*diameter), height/2 + (int)(scale * ys[i]-0.25*diameter), (int)(0.5*diameter), (int)(0.5*diameter));
