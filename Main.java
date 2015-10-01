@@ -19,7 +19,7 @@ public class Main {
 
     static double scale = 10;
     static int N = 1000;
-    static double T = 0.41;
+    static double T = 0.15;
     static double P = 1;
 
     public static void main(String[] args) throws IOException {

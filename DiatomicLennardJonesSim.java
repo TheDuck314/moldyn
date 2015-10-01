@@ -96,12 +96,12 @@ public class DiatomicLennardJonesSim implements Sim {
             } while(collision);
         }*/
         
-        int rowLen = (int)Math.ceil(Math.sqrt(Math.sqrt(3)*N/2));
-        if (rowLen % 2 != 0) rowLen -= 1;
+        int rowLen = (int)Math.ceil(Math.sqrt(N));
+        if (rowLen % 2 != 1) rowLen -= 1;
         double xSpacing = 1.0;
-        double ySpacing = xSpacing * Math.sqrt(3)/2;
+        double ySpacing = 1.0;
         double cornerOffset = 0.5 * xSpacing * rowLen;
-        double oddRowOffset = xSpacing / 2;
+        double oddRowOffset = 0;
         int row = 0;
         int col = 0;
         for (int i = 0; i < N; ++i) {
